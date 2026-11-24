@@ -8,7 +8,7 @@ With Git installed, open **Window → Package Manager → + → Install package 
 
 ## Register a command
 
-Save this as `PlayerDebugCommands.cs` and attach it to the player in a development scene. It implements a simple version of Rift Arena's `TeleportToCenter` command.
+Save this as `PlayerDebugCommands.cs` and attach it to the player in a development scene.
 
 ```csharp
 using GMConsole;
@@ -45,22 +45,6 @@ Enter **Play Mode** and open **Window → Game Master**. The default server addr
 - **Launch GUI** opens the console inside Unity. Press **Enter** or click **Run** to execute the input. Use **Help** for the server's command descriptions, **Tab** to complete a command name, and **↑ / ↓** to recall distinct commands. Click a **Recent** button to run a command again. To use a different server, enter its URL and click **Connect**.
 - **Launch Terminal** opens the Python client. The launcher sets up the environment if Python 3 is installed. The client tries localhost first, then looks for servers on the local network via SSDP. Enter `help` to list commands and use **↑ / ↓** to recall distinct commands.
 
-## Try Rift Arena
+Enter `TeleportToCenter` in either client to move the player to the scene origin.
 
-Clone the [GameMasterConsoleEnv demo](https://github.com/kekchpek/GameMasterConsoleEnv) with its submodule.
-
-```sh
-git clone --recurse-submodules https://github.com/kekchpek/GameMasterConsoleEnv.git
-```
-
-Open `Assets/ArenaDemo/RiftArena.unity` and press **Play**. The demo registers its commands in [ArenaDemo.cs](https://github.com/kekchpek/GameMasterConsoleEnv/blob/main/Assets/ArenaDemo/ArenaDemo.cs).
-
-| Command | Effect in Rift Arena |
-| --- | --- |
-| `GrantXp 150` | Adds 150 XP and takes a new player from level 1 to level 3. |
-| `SetLevel 5` | Sets the player's level to 5 and resets XP progress within that level. |
-| `SpawnEnemy 3` | Spawns three enemies on the arena floor. |
-| `SpawnCenterEnemies` | Spawns ten enemies near the center if there is room. |
-| `TeleportToCenter` | Returns the player and camera to the center. |
-
-![Entering GrantXp 150 in the Unity console and seeing the Rift Arena player reach level 3](Documentation~/rift-arena-console.gif)
+![TeleportToCenter moves the player to the center of the scene](Documentation~/teleport-to-center.gif)
