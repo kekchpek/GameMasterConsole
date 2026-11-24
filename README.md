@@ -4,7 +4,7 @@ Register debug commands in Unity and run them from the Unity Editor or a termina
 
 ## Install
 
-With Git installed, open **Window → Package Manager → + → Install package from git URL** in Unity 6.2 or newer and enter `https://github.com/kekchpek/GameMasterConsole.git`. If your scripts use an assembly definition, reference `GameMasterConsole`.
+With Git installed, open **Window → Package Manager** in Unity, click **+**, choose the Git URL option, and enter `https://github.com/kekchpek/GameMasterConsole.git`. If your scripts use an assembly definition, reference `GameMasterConsole`.
 
 ## Register a command
 
