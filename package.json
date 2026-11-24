@@ -2,10 +2,10 @@
   "name": "com.kekchpek.gamemaster-console",
   "version": "0.1.0",
   "displayName": "GameMaster Console",
-  "description": "Debug commands for Unity with an HTTP server and a Python console client.",
+  "description": "Register and run Unity debug commands from the Editor or a terminal.",
   "unity": "6000.2",
   "dependencies": {
     "com.unity.nuget.newtonsoft-json": "3.2.1"
   },
-  "documentationUrl": "https://github.com/kekchpek/GameMasterConsole/blob/v0.1.0/README.md"
+  "documentationUrl": "https://github.com/kekchpek/GameMasterConsole#readme"
 }

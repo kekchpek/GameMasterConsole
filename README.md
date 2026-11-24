@@ -1,71 +1,66 @@
 # GameMaster Console
 
-Register debug commands in Unity and run them from a Python console or an HTTP client. The server includes `help` and `SetGameSpeed` and supports optional SSDP discovery on a local network.
+Register debug commands in Unity and run them from the Unity Editor or a terminal while the game is running.
 
-## Install in Unity
+## Install
 
-Requires Unity 6.2 or newer and Git. Unity Package Manager installs Newtonsoft.Json automatically.
+With Git installed, open **Window → Package Manager → + → Install package from git URL** in Unity 6.2 or newer and enter `https://github.com/kekchpek/GameMasterConsole.git`. If your scripts use an assembly definition, reference `GameMasterConsole`.
 
-Open **Window → Package Manager**, choose **+ → Install package from git URL**, and enter:
+## Register a command
 
-```text
-https://github.com/kekchpek/GameMasterConsole.git#v0.1.0
-```
-
-You can also add this entry under `dependencies` in `Packages/manifest.json`:
-
-```json
-"com.kekchpek.gamemaster-console": "https://github.com/kekchpek/GameMasterConsole.git#v0.1.0"
-```
-
-If your scripts use an assembly definition, add a reference to the `GameMasterConsole` assembly. If the project already contains a copy of the module under `Assets`, remove that copy when switching to the package.
-
-## Register and run a command
-
-Attach this component to a GameObject in a debug scene and enter Play Mode:
+Save this as `PlayerDebugCommands.cs` and attach it to the player in a development scene. It implements a simple version of Rift Arena's `TeleportToCenter` command.
 
 ```csharp
 using GMConsole;
 using UnityEngine;
 
-public sealed class DebugConsoleBootstrap : MonoBehaviour
+public sealed class PlayerDebugCommands : MonoBehaviour
 {
     private void Awake()
     {
-        GameMaster.RegisterCommand("ping", "Replies with pong.", args => args.SetResult("pong"));
+        GameMaster.RegisterCommand("TeleportToCenter", "Move the player to the origin.", TeleportToCenter);
         GameMaster.StartServer();
     }
 
     private void OnDestroy()
     {
+        GameMaster.UnregisterCommand("TeleportToCenter");
         GameMaster.StopServer();
-        GameMaster.UnregisterCommand("ping");
+    }
+
+    private void TeleportToCenter(GMArgs args)
+    {
+        transform.position = Vector3.zero;
+        args.SetResult("Player moved to the origin.");
     }
 }
 ```
 
-The static API creates a shared `GameMasterServer` when you first register a command, query the registry, start the server, or read `GameMaster.Instance`. The listener starts only when you call `StartServer()` from Unity's main thread. `StopServer()` keeps the registered commands for a later restart in the same play session. Unity stops the shared server when leaving Play Mode and resets the registry for the next session.
+`RegisterCommand` takes a name, a description shown by `help`, and a handler. In handlers with arguments, use `GMArgs.TryGetFloat` and `GMArgs.TryGetString` to read values and `SetResult` to return a message. Start and stop the shared server from one component. Other components can register their commands and unregister them when destroyed.
 
-Use `GMArgs.GetString()` and `GMArgs.GetFloat()` to read arguments, and `SetResult()` to send a response. Command names are case-insensitive. Projects that manage dependencies can still construct a `GameMasterServer` and use `IGameMasterServer` and `IGameMasterCommandRegistry` directly.
+## Run commands
 
-## Connect a client
+Enter **Play Mode** and open **Window → Game Master**. The default server address is `http://localhost:54345`.
 
-By default, the static server listens on `http://localhost:54345`. With Python 3 installed, choose **Window → Game Master → Launch Console Client** in Unity and enter `ping`. The launcher prepares the Python environment in the project's `Library` folder. The client checks the default local address before looking for servers via SSDP.
+- **Launch GUI** opens the console inside Unity. Press **Enter** or click **Run** to execute the input. Use **Help** for the server's command descriptions, **Tab** to complete a command name, and **↑ / ↓** to recall distinct commands. Click a **Recent** button to run a command again. To use a different server, enter its URL and click **Connect**.
+- **Launch Terminal** opens the Python client. The launcher sets up the environment if Python 3 is installed. The client tries localhost first, then looks for servers on the local network via SSDP. Enter `help` to list commands and use **↑ / ↓** to recall distinct commands.
 
-To connect to a custom address from a checkout of this repository, run:
+## Try Rift Arena
 
-```sh
-bash 'Tools~/Client/run_client.sh' --server http://localhost:54345
-```
-
-On Windows, run `"Tools~\Client\run_client.bat" --server http://localhost:54345`. You can also send a command over HTTP:
+Clone the [GameMasterConsoleEnv demo](https://github.com/kekchpek/GameMasterConsoleEnv) with its submodule.
 
 ```sh
-curl http://localhost:54345/command \
-  -H 'Content-Type: application/json' \
-  -d '{"Command":"ping","Arguments":{}}'
+git clone --recurse-submodules https://github.com/kekchpek/GameMasterConsoleEnv.git
 ```
 
-To connect from another machine on a trusted network, start the server with `GameMaster.StartServer(allowNetworkAccess: true, enableSsdp: true)`. The HTTP server has no authentication. Use it in development sessions on a trusted network.
+Open `Assets/ArenaDemo/RiftArena.unity` and press **Play**. The demo registers its commands in [ArenaDemo.cs](https://github.com/kekchpek/GameMasterConsoleEnv/blob/main/Assets/ArenaDemo/ArenaDemo.cs).
 
-See the [Python client guide](Tools~/Client/README.md) for more options.
+| Command | Effect in Rift Arena |
+| --- | --- |
+| `GrantXp 150` | Adds 150 XP and takes a new player from level 1 to level 3. |
+| `SetLevel 5` | Sets the player's level to 5 and resets XP progress within that level. |
+| `SpawnEnemy 3` | Spawns three enemies on the arena floor. |
+| `SpawnCenterEnemies` | Spawns ten enemies near the center if there is room. |
+| `TeleportToCenter` | Returns the player and camera to the center. |
+
+![Entering GrantXp 150 in the Unity console and seeing the Rift Arena player reach level 3](Documentation~/rift-arena-console.gif)

@@ -10,7 +10,7 @@ namespace GameMasterConsole.Editor
 {
     public static class GameMasterClientLauncher
     {
-        [MenuItem("Window/Game Master/Launch Console Client")]
+        [MenuItem("Window/Game Master/Launch Terminal", false, 100)]
         public static void LaunchClient()
         {
             try
@@ -23,6 +23,12 @@ namespace GameMasterConsole.Editor
             {
                 Debug.LogError($"Failed to launch GameMaster Console Client: {exception.Message}");
             }
+        }
+
+        [MenuItem("Window/Game Master/Launch GUI", false, 101)]
+        public static void LaunchGui()
+        {
+            GameMasterConsoleWindow.Open();
         }
 
         private static string PrepareClientDirectory()

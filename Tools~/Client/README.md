@@ -42,7 +42,7 @@ The client tries a local server at `http://localhost:54345` first, then looks fo
 run_client.bat --server http://localhost:54346
 ```
 
-The Unity menu **Window → Game Master → Launch Console Client** copies the launcher to the project's `Library/GameMasterConsole/Client` folder and starts it there. To run the scripts yourself, use that folder or a writable checkout of this repository.
+The Unity menu **Window → Game Master → Launch Terminal** copies the launcher to the project's `Library/GameMasterConsole/Client` folder and starts it there. To run the scripts yourself, use that folder or a writable checkout of this repository.
 
 ### Application Flow
 
@@ -54,6 +54,7 @@ The Unity menu **Window → Game Master → Launch Console Client** copies the l
 2. **Command Interface**: Once connected, you can send commands to the server
    - Commands follow the format: `COMMAND ARG1 ARG2 ARG3`
    - All commands are case-insensitive
+   - Use **↑** and **↓** to recall earlier commands in the current terminal session. Repeated commands appear once, at their latest position in the history.
 
 ### Built-in Client Commands
 

@@ -28,12 +28,32 @@ import xml.etree.ElementTree as ET
 import re
 import sys
 import logging
+from collections import OrderedDict
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 DEFAULT_SERVER_URL = 'http://localhost:54345'
+
+
+def create_command_reader():
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return input
+
+    from prompt_toolkit import prompt
+    from prompt_toolkit.history import InMemoryHistory
+
+    history = OrderedDict()
+
+    def read_command(message):
+        command = prompt(message, history=InMemoryHistory(list(history))).strip()
+        if command:
+            history.pop(command, None)
+            history[command] = None
+        return command
+
+    return read_command
 
 
 def parse_server_url(value: str) -> str:
@@ -427,12 +447,14 @@ class GameMasterClient:
         print("  EXIT     - Close application")
         print("  RESTART  - Reconnect or repeat server discovery")
         print("  <CMD> <ARGS> - Send command to server")
+        print("  Up / Down - Browse command history")
         print("=" * 40)
         
         if not self.select_server(server_url):
             print("No servers available. Exiting.")
             return
             
+        read_command = create_command_reader()
         # Main command loop
         while True:
             try:
@@ -443,7 +465,7 @@ class GameMasterClient:
                 else:
                     prompt = "GM[No Server]> "
                     
-                user_input = input(prompt).strip()
+                user_input = read_command(prompt).strip()
                 
                 if not user_input:
                     continue
