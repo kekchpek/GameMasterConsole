@@ -129,7 +129,8 @@ namespace GameMasterConsole.Editor
                 {
                     foreach (JProperty property in response.Data.Properties())
                     {
-                        if (property.Name is "command" or "arguments" or "timestamp" or "status")
+                        if (property.Name == "command" || property.Name == "arguments" ||
+                            property.Name == "timestamp" || property.Name == "status")
                             continue;
 
                         string value = property.Value.Type == JTokenType.String

@@ -651,7 +651,7 @@ namespace GMConsole
         }
 
         private void HandleHelpCommand(GMArgs args) {
-            args.SetResult("List of commands:\n" + string.Join('\n', _registeredCommands.Select(x => $"{x.Key} - {x.Value.desc}")));
+            args.SetResult("List of commands:\n" + string.Join("\n", _registeredCommands.Select(x => $"{x.Key} - {x.Value.desc}")));
         }
 
         private void HandleSetGameSpeedCommand(GMArgs args)

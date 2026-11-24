@@ -158,7 +158,7 @@ namespace GameMasterConsole.Editor
 
         internal void SetConnectionStatus(string status, bool connected)
         {
-            _connectionStatus.text = status;
+            _connectionStatus.text = ToDisplayText(status);
             _connectionStatus.tooltip = status;
             _connectionStatus.style.color = connected ? AccentColor : SecondaryColor;
         }
@@ -190,7 +190,7 @@ namespace GameMasterConsole.Editor
 
         internal void SetHelp(IReadOnlyList<GameMasterCommandInfo> commands, string status, Action<string> choose)
         {
-            _helpStatus.text = status;
+            _helpStatus.text = ToDisplayText(status);
             _helpRows.Clear();
             foreach (GameMasterCommandInfo command in commands)
             {
@@ -250,11 +250,11 @@ namespace GameMasterConsole.Editor
             title.style.marginRight = 4;
             row.Add(title);
 
-            var scroll = new ScrollView(ScrollViewMode.Horizontal)
-            {
-                horizontalScrollerVisibility = ScrollerVisibility.Auto,
-                verticalScrollerVisibility = ScrollerVisibility.Hidden
-            };
+            var scroll = new ScrollView(ScrollViewMode.Horizontal);
+#if UNITY_2021_3_OR_NEWER
+            scroll.horizontalScrollerVisibility = ScrollerVisibility.Auto;
+            scroll.verticalScrollerVisibility = ScrollerVisibility.Hidden;
+#endif
             scroll.style.flexGrow = 1;
             scroll.style.minWidth = 0;
             scroll.style.height = 38;
@@ -285,7 +285,10 @@ namespace GameMasterConsole.Editor
 
         private static ScrollView VerticalScroll(string name)
         {
-            var scroll = new ScrollView { name = name, horizontalScrollerVisibility = ScrollerVisibility.Hidden };
+            var scroll = new ScrollView { name = name };
+#if UNITY_2021_3_OR_NEWER
+            scroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
+#endif
             scroll.style.flexGrow = 1;
             scroll.style.minHeight = 0;
             return scroll;
@@ -294,8 +297,15 @@ namespace GameMasterConsole.Editor
         private static TextField Input(string name, string placeholder)
         {
             var field = new TextField { name = name };
+#if UNITY_6000_0_OR_NEWER
             field.textEdition.placeholder = placeholder;
             field.textSelection.selectAllOnFocus = false;
+#else
+            field.tooltip = placeholder;
+#if UNITY_2022_3_OR_NEWER
+            field.selectAllOnFocus = false;
+#endif
+#endif
             field.style.flexGrow = 1;
             field.style.minWidth = 0;
             SetPadding(field, 0, 0);
@@ -319,7 +329,10 @@ namespace GameMasterConsole.Editor
 
         private static Button CreateButton(string name, string text, bool primary = false)
         {
-            var button = new Button { name = name, text = text, enableRichText = false };
+            var button = new Button { name = name, text = ToDisplayText(text) };
+#if UNITY_2021_3_OR_NEWER
+            button.enableRichText = false;
+#endif
             button.style.flexShrink = 0;
             button.style.minHeight = 24;
             button.style.color = primary ? AccentColor : TextColor;
@@ -350,7 +363,10 @@ namespace GameMasterConsole.Editor
 
         private static Label Caption(string text)
         {
-            var label = new Label(text) { enableRichText = false };
+            var label = new Label(ToDisplayText(text));
+#if UNITY_2021_3_OR_NEWER
+            label.enableRichText = false;
+#endif
             label.style.color = SecondaryColor;
             label.style.fontSize = 12;
             label.style.unityFontStyleAndWeight = FontStyle.Bold;
@@ -359,11 +375,33 @@ namespace GameMasterConsole.Editor
 
         private static Label SelectableText(string text)
         {
-            var label = new Label(text) { enableRichText = false, parseEscapeSequences = false, focusable = true, tabIndex = -1 };
+            var label = new Label(ToDisplayText(text));
+#if UNITY_2021_3_OR_NEWER
+            label.enableRichText = false;
+#endif
+#if UNITY_2022_3_OR_NEWER
+            label.parseEscapeSequences = false;
+            label.focusable = true;
+            label.tabIndex = -1;
+            label.selection.isSelectable = true;
+#else
+            label.AddManipulator(new ContextualMenuManipulator(evt =>
+                evt.menu.AppendAction("Copy", _ => GUIUtility.systemCopyBuffer = text,
+                    DropdownMenuAction.Status.Normal)));
+#endif
             label.style.whiteSpace = WhiteSpace.Normal;
             label.style.flexShrink = 0;
-            label.selection.isSelectable = true;
             return label;
+        }
+
+        private static string ToDisplayText(string text)
+        {
+#if UNITY_2021_3_OR_NEWER
+            return text;
+#else
+            // Older text elements always parse rich text. Break tag openers without changing their visible text.
+            return text?.Replace("<", "<\u200B");
+#endif
         }
 
         private static void UseConsoleFont(VisualElement element)

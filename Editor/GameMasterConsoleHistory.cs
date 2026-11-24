@@ -8,8 +8,8 @@ namespace GameMasterConsole.Editor
         private const int RecentLimit = 10;
         private const int SuggestionLimit = 6;
 
-        private readonly List<string> _entries = new();
-        private readonly List<string> _recent = new();
+        private readonly List<string> _entries = new List<string>();
+        private readonly List<string> _recent = new List<string>();
         private int _historyIndex;
         private string _draft = string.Empty;
 

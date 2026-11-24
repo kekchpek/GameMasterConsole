@@ -78,7 +78,7 @@ namespace GameMasterConsole.Editor
         {
             if (evt.keyCode != KeyCode.Return && evt.keyCode != KeyCode.KeypadEnter)
                 return;
-            evt.StopImmediatePropagation();
+            ConsumeKey(evt);
             RequestHelp();
         }
 
@@ -106,7 +106,16 @@ namespace GameMasterConsole.Editor
                     return;
             }
 
+            ConsumeKey(evt);
+        }
+
+        private static void ConsumeKey(KeyDownEvent evt)
+        {
             evt.StopImmediatePropagation();
+#if !UNITY_2023_2_OR_NEWER
+            // Older UI Toolkit versions run default actions even after propagation stops.
+            evt.PreventDefault();
+#endif
         }
 
         private void Recall(int direction)
