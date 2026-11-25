@@ -1,6 +1,6 @@
 {
   "name": "com.kekchpek.gamemaster-console",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "GameMaster Console",
   "description": "Register and run Unity debug commands from the Editor or a terminal.",
   "unity": "2020.3",
