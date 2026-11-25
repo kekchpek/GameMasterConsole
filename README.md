@@ -40,23 +40,39 @@ public sealed class PlayerDebugCommands : MonoBehaviour
 
 ## Run commands
 
-Enter **Play Mode** or start a development build that runs the GameMaster server. The default address is `http://localhost:54345`.
+Enter **Play Mode** or start a development build that runs the GameMaster server.
 
 ### Desktop app
 
-From a checkout of this repository, open `Tools~/Client` and run the launcher for your platform. On macOS and Linux, run `./run_gui.sh`. On Windows, run `run_gui.bat`. In Unity, **Window → Game Master → Launch GUI** is a shortcut to the same app. It runs in its own window and connects to the game over HTTP. See the [Python client setup](Tools~/Client/README.md) for installation and custom server addresses.
+GameMaster Console runs in a separate Python desktop window and connects to Unity over HTTP. It requires Python 3 with Tkinter and Tk 8.6 or later. The app uses Python's standard library and can launch offline.
 
-Press **Enter** or click **Run** to execute a command. Use **Help** for the server's command descriptions, **Tab** to complete a command name, and **↑ / ↓** to recall distinct commands. Click a **Recent** command to run it again.
+Open **Window → Game Master → Launch GUI** in Unity, or run `./run_gui.sh` on macOS or Linux or `run_gui.bat` on Windows from `Tools~/Client` in a checkout of this repository. See the [Python client setup](Tools~/Client/README.md) for platform instructions.
+
+The GUI connects to `http://localhost:54345` by default and retries automatically if the game server is still starting. To switch to a different editor or build, enter its URL under **Server** and click **Connect**. The screenshots below show a connection to the Rift Arena demo.
+
+#### Console
+
+Type a command and press **Enter** or click **Run** to see the game's response. Press **Tab** to complete a command name and **↑ / ↓** to browse command history. Click a command under **Recent** to run it again. In Rift Arena, `TeleportToCenter` moves the player to the center of the arena.
+
+![Console tab showing the successful TeleportToCenter command and the Recent list](Documentation~/gui-console.jpg)
+
+#### Help
+
+Browse the commands registered by the connected game and their descriptions. Select a row to read the full description. Click **Use Command** to insert its name in the console, where you can add arguments before running it. Click **Refresh** after changing the game's registered commands.
+
+![Help tab showing the commands registered by the Rift Arena demo](Documentation~/gui-help.jpg)
+
+#### Logs
+
+Watch Unity logs as they arrive. The server keeps up to 1,000 entries from the current session. Filter by severity, search messages and stack traces, or select an entry to see both in **Details**. **Auto-scroll** follows the newest entries.
+
+![Logs tab showing live Unity messages from the connected game](Documentation~/gui-logs.jpg)
 
 ### Terminal
 
 Choose **Window → Game Master → Launch Terminal** in Unity, or run the terminal launcher from `Tools~/Client`. The terminal client tries localhost first, then looks for servers on the local network via SSDP. Enter `help` to list commands and use **↑ / ↓** to recall distinct commands.
 
-Enter `TeleportToCenter` in either client to move the player to the scene origin.
-
-## View Unity logs
-
-Open **Logs** in the GUI to see messages from the connected game. The server keeps the latest 1,000 entries from the time it starts. Search the messages, filter by severity, or select an entry to inspect its stack trace.
+In the sample above, enter `TeleportToCenter` to move the player to the scene origin.
 
 ## Connect to a build
 

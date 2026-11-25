@@ -4,16 +4,16 @@ Python desktop and terminal applications for sending debug commands to GameMaste
 
 ## Desktop app
 
-Use Python 3 with Tkinter. Run `python3 -m tkinter` on macOS or Linux, or `python -m tkinter` on Windows, to check that Tkinter opens a test window. The standard Python installers from python.org include Tcl/Tk. For Homebrew Python, install the `python-tk` formula matching its version. On Debian or Ubuntu, install `python3-tk` and `python3-venv`.
+Use Python 3 with Tkinter and Tk 8.6 or newer. Run `python3 -m tkinter` on macOS or Linux, or `python -m tkinter` on Windows, to open a test window that reports the Tk version. For Homebrew Python, install the `python-tk` formula matching its version. On Debian or Ubuntu, install `python3-tk`.
 
-Start the app from this directory:
+Start the app from this directory.
 
 ```text
 ./run_gui.sh           # macOS / Linux
 run_gui.bat            # Windows
 ```
 
-The launcher installs Python dependencies into a local `.venv-gui` environment. Set `GAMEMASTER_PYTHON` to the path of a Python executable with Tkinter if you need to choose a different interpreter before setup.
+The desktop app uses Python's standard library and can launch offline. Set `GAMEMASTER_PYTHON` to a Python executable with the required Tk version if you need to choose a different interpreter.
 
 The app opens its own window with **Console**, **Help**, and **Logs** tabs. It uses `http://localhost:54345` by default. Enter another address under **Server** and click **Connect**, or pass it to the launcher:
 
@@ -22,7 +22,7 @@ The app opens its own window with **Console**, **Help**, and **Logs** tabs. It u
 run_gui.bat --server http://localhost:54346
 ```
 
-You can also run `gamemaster_gui.py` directly with a Python environment that has Tkinter and the dependencies in `requirements.txt`.
+You can also run `gamemaster_gui.py` directly with a Python executable that meets the Tk requirement.
 
 The Unity menu **Window → Game Master → Launch GUI** starts the same desktop app in a separate process. The shortcut copies the client files to the project's `Library/GameMasterConsole/Client` directory. If setup fails, check the Unity Console for the launch error.
 

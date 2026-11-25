@@ -3,18 +3,25 @@
 import argparse
 import json
 from functools import partial
+from http import HTTPStatus
+from http.client import HTTPException
 from queue import Empty, Queue
+from socket import timeout as SocketTimeout
 from threading import Thread
-from urllib.parse import urlsplit
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urlsplit
+from urllib.request import Request, urlopen
 
 import tkinter as tk
 from tkinter import ttk
 from tkinter.scrolledtext import ScrolledText
 
-import requests
-
-from gamemaster_client import DEFAULT_SERVER_URL, post_command
 from gamemaster_logs_view import LogsView
+from gamemaster_protocol import DEFAULT_SERVER_URL, command_payload
+
+
+class NetworkError(str):
+    """A displayable error for a temporary network failure."""
 
 
 def server_address(value):
@@ -89,16 +96,21 @@ def parse_help(message):
     }
 
 
-def read_json(response):
-    response.raise_for_status()
-    try:
-        return response.json()
-    except ValueError:
-        raise ValueError("The server returned invalid JSON.") from None
+def read_json(request):
+    with urlopen(request, timeout=10) as response:
+        try:
+            return json.load(response)
+        except ValueError:
+            raise ValueError("The server returned invalid JSON.") from None
 
 
 def read_command_result(address, command, args):
-    result = read_json(post_command(address, command, args))
+    request = Request(
+        f"{address}/command",
+        data=json.dumps(command_payload(command, args)).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    result = read_json(request)
     if not isinstance(result, dict) or type(result.get("Success")) is not bool:
         raise ValueError("The server returned an invalid command response.")
     success = result["Success"]
@@ -118,10 +130,13 @@ def read_log_page(address, session, cursor):
     params = {"after": cursor, "limit": 200}
     if session:
         params["session"] = session
-    response = requests.get(f"{address}/logs", params=params, timeout=10)
-    if response.status_code == 404:
+    try:
+        page = read_json(f"{address}/logs?{urlencode(params)}")
+    except HTTPError as exc:
+        if exc.code != HTTPStatus.NOT_FOUND:
+            raise
+        exc.close()
         return None
-    page = read_json(response)
     if not isinstance(page, dict):
         raise ValueError("The server returned an invalid log response.")
     page_session = page.get("SessionId")
@@ -161,6 +176,7 @@ class GameMasterApp:
         self.suggestions = []
         self.results = Queue()
         self.busy = False
+        self.retry_timer = None
         self.log_generation = 0
         self.log_timer = None
         self.log_pending = False
@@ -174,7 +190,7 @@ class GameMasterApp:
         self.build_window()
         self.logs.set_status("Waiting for Unity logs…")
         root.after(50, self.read_results)
-        root.after_idle(self.connect)
+        root.after_idle(partial(self.connect, automatic=True))
 
     def build_window(self):
         layout = ttk.Frame(self.root, padding=14)
@@ -265,15 +281,23 @@ class GameMasterApp:
         def run():
             try:
                 result = operation()
-            except requests.HTTPError as exc:
-                error = f"Server returned HTTP {exc.response.status_code}."
-                if exc.response.text.strip():
-                    error += f"\n{exc.response.text.strip()}"
+            except HTTPError as exc:
+                error = f"Server returned HTTP {exc.code}."
+                try:
+                    with exc:
+                        detail = exc.read().decode("utf-8", errors="replace").strip()
+                except (HTTPException, OSError):
+                    detail = ""
+                if detail:
+                    error += f"\n{detail}"
                 self.results.put((callback, None, error))
-            except requests.Timeout:
-                self.results.put((callback, None, "The server request timed out."))
-            except requests.RequestException:
-                self.results.put((callback, None, "Could not reach the server."))
+            except (TimeoutError, SocketTimeout, URLError) as exc:
+                reason = exc.reason if isinstance(exc, URLError) else exc
+                message = ("The server request timed out." if isinstance(reason, (TimeoutError, SocketTimeout))
+                           else "Could not reach the server.")
+                self.results.put((callback, None, NetworkError(message)))
+            except (HTTPException, OSError):
+                self.results.put((callback, None, NetworkError("Could not reach the server.")))
             except ValueError as exc:
                 self.results.put((callback, None, str(exc)))
             else:
@@ -309,16 +333,29 @@ class GameMasterApp:
             self.reset_logs()
         return True
 
-    def connect(self):
-        if self.busy or not self.apply_address():
+    def connect(self, *, automatic=False):
+        if self.busy:
+            return
+        if self.retry_timer is not None:
+            self.root.after_cancel(self.retry_timer)
+            self.retry_timer = None
+        if not self.apply_address():
             return
         self.status.set("Connecting…")
         self.help_status.set("Loading commands…")
         self.set_busy(True)
-        self.submit(partial(read_command_result, self.address, "help", []), self.connected)
+        self.submit(partial(read_command_result, self.address, "help", []),
+                    partial(self.connected, automatic))
 
-    def connected(self, result, error):
+    def connected(self, automatic, result, error):
         self.set_busy(False)
+        if isinstance(error, NetworkError):
+            self.status.set("Disconnected")
+            self.help_status.set("Waiting for the GameMaster server…")
+            if not automatic:
+                self.write_output(error, "error")
+            self.schedule_reconnect()
+            return
         self.status.set("Disconnected" if error else "Connected")
         if error or not result[0]:
             self.help_status.set(error or result[1])
@@ -327,6 +364,16 @@ class GameMasterApp:
         self.set_help(result[1])
         self.logs_supported = True
         self.schedule_logs(0)
+
+    def schedule_reconnect(self):
+        if self.retry_timer is None:
+            self.retry_timer = self.root.after(2000, self.reconnect)
+
+    def reconnect(self):
+        self.retry_timer = None
+        # Let the user finish editing the server address before issuing any requests to it.
+        if self.address_input.get() == self.address:
+            self.connect(automatic=True)
 
     def set_help(self, message):
         self.descriptions = parse_help(message)
@@ -387,6 +434,8 @@ class GameMasterApp:
         self.status.set("Disconnected" if error else "Connected")
         if error:
             self.write_output(error, "error")
+            if isinstance(error, NetworkError):
+                self.schedule_reconnect()
             return
         success, message, details = result
         text = "\n".join([message, *(f"{key}: {value}" for key, value in details.items())])
@@ -399,7 +448,7 @@ class GameMasterApp:
     def set_busy(self, busy):
         self.busy = busy
         state = "disabled" if busy else "normal"
-        for widget in (self.address_entry, self.connect_button, self.run_button, self.refresh_button):
+        for widget in (self.connect_button, self.run_button, self.refresh_button):
             widget.configure(state=state)
         for button in self.recent_buttons.winfo_children():
             button.configure(state=state)
@@ -536,6 +585,8 @@ def main():
     parser = argparse.ArgumentParser(description="Open the standalone GameMaster Console desktop app.")
     parser.add_argument("--server", type=server_address, default=DEFAULT_SERVER_URL, help="GameMaster server address")
     options = parser.parse_args()
+    if tk.TkVersion < 8.6:
+        parser.exit(1, "GameMaster Console requires Tk 8.6 or newer. Use the GUI launcher to select a compatible Python.\n")
     root = tk.Tk()
     GameMasterApp(root, options.server)
     root.mainloop()

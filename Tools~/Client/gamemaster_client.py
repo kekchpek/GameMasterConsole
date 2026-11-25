@@ -30,11 +30,11 @@ import sys
 import logging
 from collections import OrderedDict
 
+from gamemaster_protocol import DEFAULT_SERVER_URL, command_payload
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-DEFAULT_SERVER_URL = 'http://localhost:54345'
 
 
 def create_command_reader():
@@ -69,11 +69,7 @@ def parse_server_url(value: str) -> str:
 
 
 def post_command(base_url, command, args):
-    payload = {
-        'Command': command,
-        'Arguments': {str(index): value for index, value in enumerate(args)},
-    }
-    return requests.post(f'{base_url}/command', json=payload, timeout=10)
+    return requests.post(f'{base_url}/command', json=command_payload(command, args), timeout=10)
 
 
 class SSDPClient:

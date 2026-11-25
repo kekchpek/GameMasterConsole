@@ -66,8 +66,8 @@ namespace GameMasterConsole.Editor
             Directory.CreateDirectory(destination);
 
             string[] files = gui
-                ? new[] { "gamemaster_client.py", "gamemaster_gui.py", "gamemaster_logs_view.py", "requirements.txt", "run_gui.bat", "run_gui.sh" }
-                : new[] { "gamemaster_client.py", "requirements.txt", "run_client.bat", "run_client.sh" };
+                ? new[] { "gamemaster_gui.py", "gamemaster_logs_view.py", "gamemaster_protocol.py", "run_gui.bat", "run_gui.sh" }
+                : new[] { "gamemaster_client.py", "gamemaster_protocol.py", "requirements.txt", "run_client.bat", "run_client.sh" };
             foreach (string file in files)
             {
                 string sourceFile = Path.Combine(source, file);
