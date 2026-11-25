@@ -1,6 +1,6 @@
 # GameMaster Console
 
-Register debug commands in Unity and run them from the Unity Editor or a terminal while the game is running.
+Register debug commands in Unity and run them from a standalone Python desktop app or a terminal while the game is running.
 
 ## Install
 
@@ -40,14 +40,19 @@ public sealed class PlayerDebugCommands : MonoBehaviour
 
 ## Run commands
 
-Enter **Play Mode** and open **Window → Game Master**. The default server address is `http://localhost:54345`.
+Enter **Play Mode** or start a development build that runs the GameMaster server. The default address is `http://localhost:54345`.
 
-- **Launch GUI** opens the console inside Unity. Press **Enter** or click **Run** to execute the input. Use **Help** for the server's command descriptions, **Tab** to complete a command name, and **↑ / ↓** to recall distinct commands. Click a **Recent** button to run a command again. To use a different server, enter its URL and click **Connect**.
-- **Launch Terminal** opens the Python client. The launcher sets up the environment if Python 3 is installed. The client tries localhost first, then looks for servers on the local network via SSDP. Enter `help` to list commands and use **↑ / ↓** to recall distinct commands.
+### Desktop app
+
+From a checkout of this repository, open `Tools~/Client` and run the launcher for your platform. On macOS and Linux, run `./run_gui.sh`. On Windows, run `run_gui.bat`. In Unity, **Window → Game Master → Launch GUI** is a shortcut to the same app. It runs in its own window and connects to the game over HTTP. See the [Python client setup](Tools~/Client/README.md) for installation and custom server addresses.
+
+Press **Enter** or click **Run** to execute a command. Use **Help** for the server's command descriptions, **Tab** to complete a command name, and **↑ / ↓** to recall distinct commands. Click a **Recent** command to run it again.
+
+### Terminal
+
+Choose **Window → Game Master → Launch Terminal** in Unity, or run the terminal launcher from `Tools~/Client`. The terminal client tries localhost first, then looks for servers on the local network via SSDP. Enter `help` to list commands and use **↑ / ↓** to recall distinct commands.
 
 Enter `TeleportToCenter` in either client to move the player to the scene origin.
-
-![TeleportToCenter moves the player to the center of the scene](Documentation~/teleport-to-center.gif)
 
 ## View Unity logs
 
@@ -59,4 +64,4 @@ Register commands and start GameMaster Console from the game's startup code in d
 
 To connect to a build running on another computer or an Android or iOS device, start the server with `GameMaster.StartServer(allowNetworkAccess: true)`. Keep the build running on the same local development network and use the device's IP address, for example `http://192.168.1.42:54345`. On Android, set **Internet Access** to **Require** in Player Settings to include the network permission.
 
-Enter the address under **Server** in the GUI and click **Connect**. To use the terminal client, pass the address with `--server` to the [terminal launcher](Tools~/Client/README.md).
+Enter the address under **Server** in the desktop app and click **Connect**. Both [Python client launchers](Tools~/Client/README.md) also accept `--server`.

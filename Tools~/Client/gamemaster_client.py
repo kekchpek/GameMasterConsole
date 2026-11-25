@@ -68,6 +68,14 @@ def parse_server_url(value: str) -> str:
     raise argparse.ArgumentTypeError('use an HTTP base URL such as http://localhost:54345')
 
 
+def post_command(base_url, command, args):
+    payload = {
+        'Command': command,
+        'Arguments': {str(index): value for index, value in enumerate(args)},
+    }
+    return requests.post(f'{base_url}/command', json=payload, timeout=10)
+
+
 class SSDPClient:
     """Client for discovering GameMaster servers via SSDP protocol"""
     
@@ -389,23 +397,8 @@ class GameMasterClient:
             return False
             
         try:
-            # Convert args to numbered dictionary format expected by server
-            arguments = {}
-            for i, arg in enumerate(args):
-                arguments[str(i)] = arg
-            
-            # Prepare request payload
-            payload = {
-                'Command': command,
-                'Arguments': arguments
-            }
-            
-            # Send HTTP POST request
             base_url = self.current_server.get('base_url') or f"http://{self.current_server['ip']}:{self.current_server['port']}"
-            url = f"{base_url}/command"
-            headers = {'Content-Type': 'application/json'}
-            
-            response = requests.post(url, json=payload, headers=headers, timeout=10)
+            response = post_command(base_url, command, args)
             
             if response.status_code == 200:
                 try:

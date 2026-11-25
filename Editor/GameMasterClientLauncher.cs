@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -26,12 +27,32 @@ namespace GameMasterConsole.Editor
         }
 
         [MenuItem("Window/Game Master/Launch GUI", false, 101)]
-        public static void LaunchGui()
+        public static async void LaunchGui()
         {
-            GameMasterConsoleWindow.Open();
+            try
+            {
+                string clientDirectory = PrepareClientDirectory(gui: true);
+                using var process = Process.Start(GetGuiLaunchInfo(clientDirectory));
+                if (process == null)
+                    throw new InvalidOperationException("The Python launcher could not be started.");
+
+                string errors = await process.StandardError.ReadToEndAsync();
+                await Task.Run(() => process.WaitForExit());
+                if (process.ExitCode != 0)
+                {
+                    string details = errors.Trim();
+                    Debug.LogError(string.IsNullOrEmpty(details)
+                        ? $"GameMaster Console desktop launcher exited with code {process.ExitCode}."
+                        : $"GameMaster Console desktop launcher failed.\n{details}");
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError($"Failed to launch GameMaster Console desktop app: {exception.Message}");
+            }
         }
 
-        private static string PrepareClientDirectory()
+        private static string PrepareClientDirectory(bool gui = false)
         {
             PackageInfo package = PackageInfo.FindForAssembly(typeof(GameMasterClientLauncher).Assembly);
             if (package == null)
@@ -44,7 +65,10 @@ namespace GameMasterConsole.Editor
                 Path.Combine(Application.dataPath, "..", "Library", "GameMasterConsole", "Client"));
             Directory.CreateDirectory(destination);
 
-            foreach (string file in new[] { "gamemaster_client.py", "requirements.txt", "run_client.bat", "run_client.sh" })
+            string[] files = gui
+                ? new[] { "gamemaster_client.py", "gamemaster_gui.py", "gamemaster_logs_view.py", "requirements.txt", "run_gui.bat", "run_gui.sh" }
+                : new[] { "gamemaster_client.py", "requirements.txt", "run_client.bat", "run_client.sh" };
+            foreach (string file in files)
             {
                 string sourceFile = Path.Combine(source, file);
                 string destinationFile = Path.Combine(destination, file);
@@ -80,6 +104,34 @@ namespace GameMasterConsole.Editor
                     startInfo.UseShellExecute = false;
                     break;
 
+                default:
+                    throw new PlatformNotSupportedException($"Unsupported platform: {Application.platform}");
+            }
+
+            return startInfo;
+        }
+
+        private static ProcessStartInfo GetGuiLaunchInfo(string clientDirectory)
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                WorkingDirectory = clientDirectory,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true
+            };
+
+            switch (Application.platform)
+            {
+                case RuntimePlatform.WindowsEditor:
+                    startInfo.FileName = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe";
+                    startInfo.Arguments = "/d /c run_gui.bat";
+                    break;
+                case RuntimePlatform.OSXEditor:
+                case RuntimePlatform.LinuxEditor:
+                    startInfo.FileName = "/bin/bash";
+                    startInfo.Arguments = "run_gui.sh";
+                    break;
                 default:
                     throw new PlatformNotSupportedException($"Unsupported platform: {Application.platform}");
             }
