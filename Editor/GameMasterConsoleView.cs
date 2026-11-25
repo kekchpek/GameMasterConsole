@@ -13,7 +13,14 @@ namespace GameMasterConsole.Editor
         Error
     }
 
-    internal sealed class GameMasterConsoleView
+    internal enum GameMasterConsoleTab
+    {
+        Console,
+        Help,
+        Logs
+    }
+
+    internal sealed partial class GameMasterConsoleView
     {
         private static readonly Color CanvasColor = new Color32(22, 27, 35, 255);
         private static readonly Color PanelColor = new Color32(30, 37, 48, 255);
@@ -31,6 +38,7 @@ namespace GameMasterConsole.Editor
         private readonly Label _connectionStatus;
         private readonly VisualElement _consolePane;
         private readonly VisualElement _helpPane;
+        private readonly LogsPane _logsPane;
         private readonly ScrollView _output;
         private readonly VisualElement _recentBar;
         private readonly ScrollView _recentCommands;
@@ -44,6 +52,7 @@ namespace GameMasterConsole.Editor
         internal Button ConnectButton { get; }
         internal Button ConsoleTab { get; }
         internal Button HelpTab { get; }
+        internal Button LogsTab { get; }
         internal Button RefreshHelpButton { get; }
         internal Button RunButton { get; }
 
@@ -79,13 +88,17 @@ namespace GameMasterConsole.Editor
             var tabs = Row();
             tabs.style.marginTop = 8;
             tabs.style.marginBottom = 8;
-            ConsoleTab = CreateButton("console-tab", "Console");
-            HelpTab = CreateButton("help-tab", "Help");
+            ConsoleTab = CreateButton("console-tab", "Console", selectable: true);
+            HelpTab = CreateButton("help-tab", "Help", selectable: true);
+            LogsTab = CreateButton("logs-tab", "Logs", selectable: true);
             ConsoleTab.style.minWidth = 79;
             HelpTab.style.minWidth = 65;
             HelpTab.style.marginLeft = 5;
+            LogsTab.style.minWidth = 65;
+            LogsTab.style.marginLeft = 5;
             tabs.Add(ConsoleTab);
             tabs.Add(HelpTab);
+            tabs.Add(LogsTab);
             root.Add(tabs);
 
             _consolePane = new VisualElement { name = "console-pane" };
@@ -143,18 +156,29 @@ namespace GameMasterConsole.Editor
             _helpPane.Add(_helpRows);
             root.Add(_helpPane);
 
+            _logsPane = new LogsPane();
+            root.Add(_logsPane.Root);
+
             _recentBar.style.display = DisplayStyle.None;
             _suggestionBar.style.display = DisplayStyle.None;
-            ShowHelp(false);
+            ShowTab(GameMasterConsoleTab.Console);
         }
 
-        internal void ShowHelp(bool visible)
+        internal void ShowTab(GameMasterConsoleTab tab)
         {
-            _consolePane.style.display = visible ? DisplayStyle.None : DisplayStyle.Flex;
-            _helpPane.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
-            SetTabSelected(ConsoleTab, !visible);
-            SetTabSelected(HelpTab, visible);
+            _consolePane.style.display = tab == GameMasterConsoleTab.Console ? DisplayStyle.Flex : DisplayStyle.None;
+            _helpPane.style.display = tab == GameMasterConsoleTab.Help ? DisplayStyle.Flex : DisplayStyle.None;
+            _logsPane.Root.style.display = tab == GameMasterConsoleTab.Logs ? DisplayStyle.Flex : DisplayStyle.None;
+            SetTabSelected(ConsoleTab, tab == GameMasterConsoleTab.Console);
+            SetTabSelected(HelpTab, tab == GameMasterConsoleTab.Help);
+            SetTabSelected(LogsTab, tab == GameMasterConsoleTab.Logs);
         }
+
+        internal void ResetLogs() => _logsPane.Clear();
+
+        internal void AppendLogs(IReadOnlyList<GameMasterLogEntry> entries) => _logsPane.Append(entries);
+
+        internal void SetLogsStatus(string status) => _logsPane.SetStatus(status);
 
         internal void SetConnectionStatus(string status, bool connected)
         {
@@ -327,7 +351,7 @@ namespace GameMasterConsole.Editor
             return field;
         }
 
-        private static Button CreateButton(string name, string text, bool primary = false)
+        private static Button CreateButton(string name, string text, bool primary = false, bool selectable = false)
         {
             var button = new Button { name = name, text = ToDisplayText(text) };
 #if UNITY_2021_3_OR_NEWER
@@ -345,7 +369,7 @@ namespace GameMasterConsole.Editor
             button.style.marginBottom = 0;
             SetPadding(button, 8, 3);
             SetOutline(button);
-            if (name != "console-tab" && name != "help-tab")
+            if (!selectable)
             {
                 button.RegisterCallback<MouseEnterEvent>(_ => button.style.backgroundColor = HoverColor);
                 button.RegisterCallback<MouseLeaveEvent>(_ => button.style.backgroundColor = primary ? AccentBackground : ButtonColor);

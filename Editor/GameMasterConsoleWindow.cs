@@ -11,15 +11,22 @@ namespace GameMasterConsole.Editor
     internal sealed class GameMasterConsoleWindow : EditorWindow
     {
         private const string HistoryKey = "GameMasterConsole.CommandHistory";
+        private const double LogPollSeconds = 1;
+        private const double LogRetrySeconds = 3;
 
         [SerializeField] private string _address = GameMasterGuiClient.DefaultAddress;
-        [SerializeField] private bool _showHelp;
+        [SerializeField] private GameMasterConsoleTab _activeTab;
 
         private GameMasterConsoleView _view;
         private GameMasterGuiClient _client;
+        private GameMasterGuiLogClient _logClient;
+        private IVisualElementScheduledItem _logPoll;
         private GameMasterConsoleHistory _history;
         private IReadOnlyList<GameMasterCommandInfo> _commands = Array.Empty<GameMasterCommandInfo>();
         private IReadOnlyList<string> _suggestions = Array.Empty<string>();
+        private string _logSessionId;
+        private long _lastLogId;
+        private double _nextLogPollAt;
 
         internal static void Open()
         {
@@ -32,6 +39,7 @@ namespace GameMasterConsole.Editor
         private void OnEnable()
         {
             _client = new GameMasterGuiClient();
+            _logClient = new GameMasterGuiLogClient();
             string savedHistory = SessionState.GetString(HistoryKey, string.Empty);
             var snapshot = string.IsNullOrEmpty(savedHistory) ? null : JsonUtility.FromJson<HistorySnapshot>(savedHistory);
             _history = new GameMasterConsoleHistory(snapshot?.Entries);
@@ -41,12 +49,15 @@ namespace GameMasterConsole.Editor
         private void OnDisable()
         {
             EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+            _logPoll?.Pause();
+            _logClient?.Dispose();
             _client?.Dispose();
             _view = null;
         }
 
         public void CreateGUI()
         {
+            _logPoll?.Pause();
             _view = new GameMasterConsoleView(rootVisualElement);
             _view.ServerAddress.SetValueWithoutNotify(_address);
             _view.ServerAddress.RegisterCallback<KeyDownEvent>(OnAddressKeyDown, TrickleDown.TrickleDown);
@@ -57,13 +68,19 @@ namespace GameMasterConsole.Editor
                 UpdateSuggestions();
             });
             _view.ConnectButton.clicked += RequestHelp;
-            _view.ConsoleTab.clicked += () => SelectTab(showHelp: false);
+            _view.ConsoleTab.clicked += () => SelectTab(GameMasterConsoleTab.Console);
             _view.HelpTab.clicked += OpenHelp;
+            _view.LogsTab.clicked += () => SelectTab(GameMasterConsoleTab.Logs);
             _view.RefreshHelpButton.clicked += RequestHelp;
             _view.RunButton.clicked += RunCommand;
-            _view.ShowHelp(_showHelp);
             _view.SetRecentCommands(_history.Recent, RunRecentCommand);
-            if (!_showHelp)
+
+            ResetLogFeed();
+            _logPoll = rootVisualElement.schedule.Execute(PollLogs).Every(200);
+            _view.ShowTab(_activeTab);
+            if (_activeTab != GameMasterConsoleTab.Logs)
+                _logPoll.Pause();
+            if (_activeTab == GameMasterConsoleTab.Console)
                 _view.CommandInput.schedule.Execute(_view.CommandInput.Focus);
             rootVisualElement.schedule.Execute(RequestHelp).StartingIn(250);
         }
@@ -126,7 +143,7 @@ namespace GameMasterConsole.Editor
 
         private void FillInput(string input)
         {
-            SelectTab(showHelp: false);
+            SelectTab(GameMasterConsoleTab.Console);
             _history.ResetNavigation();
             SetInput(input);
         }
@@ -147,17 +164,30 @@ namespace GameMasterConsole.Editor
             _view.SetSuggestions(_suggestions, FillCommandName);
         }
 
-        private void SelectTab(bool showHelp)
+        private void SelectTab(GameMasterConsoleTab tab)
         {
-            _showHelp = showHelp;
-            _view.ShowHelp(showHelp);
-            if (!showHelp)
+            _activeTab = tab;
+            _view.ShowTab(tab);
+            if (tab == GameMasterConsoleTab.Logs)
+            {
+                if (ReadAddress())
+                {
+                    _nextLogPollAt = 0;
+                    _logPoll.Resume();
+                    PollLogs();
+                }
+                return;
+            }
+
+            _logPoll.Pause();
+            _logClient.Cancel();
+            if (tab == GameMasterConsoleTab.Console)
                 _view.CommandInput.Focus();
         }
 
         private void OpenHelp()
         {
-            SelectTab(showHelp: true);
+            SelectTab(GameMasterConsoleTab.Help);
             if (_commands.Count == 0)
                 RequestHelp();
         }
@@ -169,13 +199,20 @@ namespace GameMasterConsole.Editor
                 const string error = "Enter an HTTP or HTTPS server address, such as http://localhost:54345.";
                 _view.SetConnectionStatus("Invalid address", false);
                 _view.SetHelp(_commands, error, FillCommandName);
-                if (!_showHelp)
+                if (_activeTab == GameMasterConsoleTab.Console)
                     _view.AppendOutput(error, ConsoleLineKind.Error);
+                if (_activeTab == GameMasterConsoleTab.Logs)
+                {
+                    _logPoll.Pause();
+                    _logClient.Cancel();
+                    _view.SetLogsStatus(error);
+                }
                 return false;
             }
 
             if (!string.Equals(_address, address, StringComparison.OrdinalIgnoreCase))
             {
+                ResetLogFeed();
                 _commands = Array.Empty<GameMasterCommandInfo>();
                 _view.SetHelp(_commands, "Connect to load command descriptions.", FillCommandName);
                 UpdateSuggestions();
@@ -190,6 +227,11 @@ namespace GameMasterConsole.Editor
             if (_view == null || _client.IsBusy || !ReadAddress())
                 return;
 
+            if (_activeTab == GameMasterConsoleTab.Logs)
+            {
+                _nextLogPollAt = 0;
+                _logPoll.Resume();
+            }
             SetRequestInProgress(true);
             _view.SetConnectionStatus("Connecting…", false);
             _view.SetHelp(_commands, "Loading command descriptions…", FillCommandName);
@@ -259,6 +301,52 @@ namespace GameMasterConsole.Editor
             string status = _commands.Count == 0 ? "The server returned no command descriptions." : null;
             _view.SetHelp(_commands, status, FillCommandName);
             UpdateSuggestions();
+        }
+
+        private void ResetLogFeed()
+        {
+            _logClient.Cancel();
+            _logSessionId = null;
+            _lastLogId = 0;
+            _nextLogPollAt = 0;
+            _view.ResetLogs();
+            _view.SetLogsStatus("Waiting for Unity logs…");
+        }
+
+        private void PollLogs()
+        {
+            if (_view == null || _activeTab != GameMasterConsoleTab.Logs || _logClient.IsBusy ||
+                EditorApplication.timeSinceStartup < _nextLogPollAt)
+                return;
+
+            _logClient.Fetch(_address, _logSessionId, _lastLogId, UpdateLogFeed);
+        }
+
+        private void UpdateLogFeed(GameMasterGuiLogResult result)
+        {
+            if (!result.Success)
+            {
+                _view.SetLogsStatus(result.Error);
+                _nextLogPollAt = result.Unsupported ? double.PositiveInfinity : EditorApplication.timeSinceStartup + LogRetrySeconds;
+                return;
+            }
+
+            GameMasterLogBatch batch = result.Batch;
+            if (!string.Equals(_logSessionId, batch.SessionId, StringComparison.Ordinal))
+            {
+                _logSessionId = batch.SessionId;
+                _lastLogId = 0;
+                _view.ResetLogs();
+            }
+
+            if (batch.Entries.Count > 0)
+            {
+                _view.AppendLogs(batch.Entries);
+                _lastLogId = batch.Entries[batch.Entries.Count - 1].Id;
+            }
+
+            _view.SetLogsStatus(_lastLogId == 0 ? "Waiting for Unity logs…" : "Live");
+            _nextLogPollAt = EditorApplication.timeSinceStartup + (batch.HasMore ? 0 : LogPollSeconds);
         }
 
         private void FinishRequest(GameMasterGuiResult result)

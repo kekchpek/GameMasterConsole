@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -9,7 +10,9 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.Scripting;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace GMConsole
 {
@@ -28,6 +31,7 @@ namespace GMConsole
         private CancellationTokenSource cancellationTokenSource;
         private bool isRunning = false;
         private GameMasterSsdpServer _ssdpServer;
+        private GameMasterLogBuffer _logs;
         private readonly Dictionary<string, (string desc, Action<GMArgs> handler)> _registeredCommands;
         
         public event Action<string, Dictionary<string, string>> OnCommandReceived;
@@ -100,6 +104,9 @@ namespace GMConsole
                 }
                 
                 cancellationTokenSource = new CancellationTokenSource();
+                var logs = new GameMasterLogBuffer();
+                _logs = logs;
+                Application.logMessageReceivedThreaded += logs.Capture;
                 isRunning = true;
                 
                 string accessInfo = allowNetworkAccess ? "all network interfaces" : "localhost only";
@@ -121,7 +128,7 @@ namespace GMConsole
                 // Start listening for requests in background
                 var listener = httpListener;
                 var cancellationToken = cancellationTokenSource.Token;
-                Task.Run(() => ListenForRequests(listener, mainThreadContext, cancellationToken));
+                Task.Run(() => ListenForRequests(listener, mainThreadContext, cancellationToken, logs));
                 
                 // Start SSDP discovery service if enabled
                 if (enableSsdp && allowNetworkAccess)
@@ -147,6 +154,10 @@ namespace GMConsole
         /// </summary>
         public void StopServer()
         {
+            var logs = Interlocked.Exchange(ref _logs, null);
+            if (logs != null)
+                Application.logMessageReceivedThreaded -= logs.Capture;
+
             if (httpListener == null)
                 return;
                 
@@ -186,7 +197,8 @@ namespace GMConsole
         /// Listens for incoming HTTP requests
         /// </summary>
         private async Task ListenForRequests(
-            HttpListener listener, SynchronizationContext mainThreadContext, CancellationToken cancellationToken)
+            HttpListener listener, SynchronizationContext mainThreadContext, CancellationToken cancellationToken,
+            GameMasterLogBuffer logs)
         {
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -196,20 +208,31 @@ namespace GMConsole
                     if (cancellationToken.IsCancellationRequested)
                         break;
                     
+                    // Reading logs does not require the Unity main thread.
+                    if (IsLogsRequest(context.Request))
+                    {
+                        ThreadPool.QueueUserWorkItem(_ =>
+                        {
+                            if (!cancellationToken.IsCancellationRequested)
+                                HandleRequest(context, logs);
+                        });
+                        continue;
+                    }
+
                     // Handle request on Unity main thread using captured synchronization context
                     if (mainThreadContext != null)
                     {
                         mainThreadContext.Post(_ =>
                         {
                             if (!cancellationToken.IsCancellationRequested)
-                                HandleRequest(context);
+                                HandleRequest(context, logs);
                         }, null);
                     }
                     else
                     {
                         // Fallback to current thread if no synchronization context is available
                         Debug.LogWarning("No synchronization context available, handling request on background thread");
-                        HandleRequest(context);
+                        HandleRequest(context, logs);
                     }
                 }
                 catch (ObjectDisposedException)
@@ -237,14 +260,15 @@ namespace GMConsole
         /// <summary>
         /// Handles incoming HTTP requests
         /// </summary>
-        private void HandleRequest(HttpListenerContext context)
+        private void HandleRequest(HttpListenerContext context, GameMasterLogBuffer logs)
         {
             var request = context.Request;
             var response = context.Response;
+            bool isLogsRequest = IsLogsRequest(request);
             
             try
             {
-                if (_logRequests)
+                if (_logRequests && !isLogsRequest)
                 {
                     Debug.Log($"Received {request.HttpMethod} request to {request.Url}");
                 }
@@ -266,6 +290,10 @@ namespace GMConsole
                 {
                     HandleCommandRequest(request, response);
                 }
+                else if (isLogsRequest)
+                {
+                    HandleLogsRequest(request, response, logs);
+                }
                 else if (request.HttpMethod == "GET" && request.Url.AbsolutePath == "/")
                 {
                     HandleStatusRequest(response);
@@ -283,7 +311,8 @@ namespace GMConsole
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Error handling request: {ex.Message}");
+                if (!isLogsRequest)
+                    Debug.LogError($"Error handling request: {ex.Message}");
                 
                 try
                 {
@@ -295,6 +324,38 @@ namespace GMConsole
                     // Ignore errors when writing error response
                 }
             }
+        }
+
+        private static bool IsLogsRequest(HttpListenerRequest request)
+        {
+            return request.HttpMethod == "GET" && request.Url?.AbsolutePath == "/logs";
+        }
+
+        private void HandleLogsRequest(HttpListenerRequest request, HttpListenerResponse response, GameMasterLogBuffer logs)
+        {
+            response.Headers["Cache-Control"] = "no-store";
+            string afterValue = request.QueryString["after"];
+            long after = 0;
+            if (afterValue != null && !long.TryParse(afterValue, NumberStyles.None, CultureInfo.InvariantCulture, out after))
+            {
+                response.StatusCode = 400;
+                WriteResponse(response, "after must be a nonnegative integer.");
+                return;
+            }
+
+            string limitValue = request.QueryString["limit"];
+            int limit = GameMasterLogBuffer.MaxPageSize;
+            if (limitValue != null && (!int.TryParse(limitValue, NumberStyles.None, CultureInfo.InvariantCulture, out limit)
+                || limit < 1 || limit > GameMasterLogBuffer.MaxPageSize))
+            {
+                response.StatusCode = 400;
+                WriteResponse(response, $"limit must be between 1 and {GameMasterLogBuffer.MaxPageSize}.");
+                return;
+            }
+
+            response.StatusCode = 200;
+            response.ContentType = "application/json";
+            WriteResponse(response, logs.ReadPage(after, limit, request.QueryString["session"]).ToString(Formatting.None));
         }
         
         /// <summary>
@@ -358,23 +419,22 @@ namespace GMConsole
         /// </summary>
         private void HandleStatusRequest(HttpListenerResponse response)
         {
-            var status = new
+            var status = new JObject
             {
-                Status = "Running",
-                Port = _port,
-                Timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                RegisteredCommands = GetRegisteredCommands(),
-                Endpoints = new[]
-                {
+                ["Status"] = "Running",
+                ["Port"] = _port,
+                ["Timestamp"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                ["RegisteredCommands"] = new JArray(GetRegisteredCommands()),
+                ["Endpoints"] = new JArray(
                     "GET / - Server status",
                     "POST /command - Execute command",
-                    "GET /description.xml - Service description (UPnP)"
-                }
+                    "GET /logs - Unity log entries",
+                    "GET /description.xml - Service description (UPnP)")
             };
             
             response.StatusCode = 200;
             response.ContentType = "application/json";
-            WriteResponse(response, JsonConvert.SerializeObject(status, Formatting.Indented));
+            WriteResponse(response, status.ToString(Formatting.Indented));
         }
         
         /// <summary>
@@ -667,9 +727,12 @@ namespace GMConsole
         /// Data structure for incoming command requests
         /// </summary>
         [Serializable]
+        [Preserve]
         private class CommandRequest
         {
+            [Preserve]
             public string Command { get; set; }
+            [Preserve]
             public Dictionary<string, string> Arguments { get; set; }
         }
         
@@ -679,8 +742,11 @@ namespace GMConsole
         [Serializable]
         private class CommandResult
         {
+            [Preserve]
             public bool Success { get; set; }
+            [Preserve]
             public string Message { get; set; }
+            [Preserve]
             public Dictionary<string, object> Data { get; set; }
         }
     }
